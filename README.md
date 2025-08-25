@@ -1,2 +1,2 @@
-# RAPTOR-Files
-R.A.P.T.O.R. ( Robotically Assisted Prosthetic for Touching and Object-Recognition )
+# PRISM-Files
+P.R.I.S.M. ( Prosthetic Recognition & Intelligent Sensing Mechanism )
