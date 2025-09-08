@@ -1,0 +1,42 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# Virtual environments (never commit these)
+.venv/
+venv/
+env/
+ENV/
+*.venv/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Logs & coverage
+*.log
+.coverage
+.coverage.*
+htmlcov/
+
+# Env files / secrets
+.env
+.env.*
+!.env.example
+
+# Editors/IDE
+.vscode/*
+
+# OS
+.DS_Store
