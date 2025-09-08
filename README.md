@@ -2,14 +2,20 @@
 P.R.I.S.M. ( Prosthetic Recognition & Intelligent Sensing Mechanism )
 
 Development Environment Setup
-    after cloning the repo, you must set up a virtual environemnt, 
+
+    after cloning the repo, you must set up a virtual environment, 
     this cannot be committed ./venv is ignored by .gitignore
+
     Commands for this are as follows
-    macOS/Linux: 
+    
+    macOS/Linux:
+
         python3.10 -m venv .venv
         source .venv/bin/activate
         python -m pip install -U pip setuptools wheel
+
     Windows(PowerShell):
+
         py -3.10 -m venv .venv
         .\.venv\Scripts\activate
         py -m pip install -U pip setuptools wheel
