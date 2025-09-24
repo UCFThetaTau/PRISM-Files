@@ -7,10 +7,13 @@ from PySide6.QtWidgets import (
     QPushButton, QLabel, QTextEdit, QSpinBox, QLineEdit, QFileDialog,
     QComboBox, QMessageBox
 )
+from PySide6.QtGui import QTextCursor
+
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TRACKER_DIR = REPO_ROOT / "apps" / "hand-tracker"
-DEFAULT_SCRIPT = TRACKER_DIR / "scripts" / "main.py"      # adjust if different
+TRACKER_DIR = REPO_ROOT / "Applications" / "HandTracker"
+DEFAULT_SCRIPT = TRACKER_DIR / "hand_tracker.py"      # adjust if different
 
 def guess_python_for_tracker() -> str:
     """Prefer the hand-tracker's venv python; fall back to current python."""
@@ -136,9 +139,11 @@ class Launcher(QMainWindow):
         self.set_status("Idle")
 
     def append_log(self, text: str):
-        self.log.moveCursor(self.log.textCursor().End)
+        self.log.moveCursor(QTextCursor.MoveOperation.End)
         self.log.insertPlainText(text)
-        self.log.moveCursor(self.log.textCursor().End)
+        self.log.moveCursor(QTextCursor.MoveOperation.End)
+        self.log.ensureCursorVisible()
+
 
     def set_status(self, s: str):
         self.status.setText(s)
