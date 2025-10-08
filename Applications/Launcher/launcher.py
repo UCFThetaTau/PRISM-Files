@@ -75,6 +75,19 @@ class Launcher(QMainWindow):
         args_row.addWidget(QLabel("Mode:")); args_row.addWidget(self.mode_combo)
         v.addLayout(args_row)
 
+        # Hand control row (send angle to Arduino via handSerial.py)
+        hand_row = QHBoxLayout()
+        self.hand_channel = QSpinBox(); self.hand_channel.setRange(0, 15); self.hand_channel.setValue(0)
+        self.hand_angle = QSpinBox(); self.hand_angle.setRange(0, 270); self.hand_angle.setValue(90)
+        self.hand_port = QLineEdit("")
+        send_hand_btn = QPushButton("Send Angle to Hand")
+        send_hand_btn.clicked.connect(self.send_angle_to_hand)
+        hand_row.addWidget(QLabel("CH:")); hand_row.addWidget(self.hand_channel)
+        hand_row.addWidget(QLabel("Angle:")); hand_row.addWidget(self.hand_angle)
+        hand_row.addWidget(QLabel("Port (optional):")); hand_row.addWidget(self.hand_port)
+        hand_row.addWidget(send_hand_btn)
+        v.addLayout(hand_row)
+
         # Start/Stop buttons
         btns = QHBoxLayout()
         self.start_btn = QPushButton("Start Hand Tracker")
@@ -87,6 +100,13 @@ class Launcher(QMainWindow):
         # Log output
         self.log = QTextEdit(); self.log.setReadOnly(True)
         v.addWidget(self.log, 1)
+
+        # Process used to run handSerial commands (separate from tracker proc)
+        self.hand_proc = QProcess(self)
+        self.hand_proc.setProcessChannelMode(QProcess.MergedChannels)
+        self.hand_proc.readyReadStandardOutput.connect(self.on_hand_stdout)
+        self.hand_proc.readyReadStandardError.connect(self.on_hand_stdout)
+        self.hand_proc.finished.connect(self.on_hand_finished)
 
         # Size
         self.resize(900, 600)
@@ -147,6 +167,45 @@ class Launcher(QMainWindow):
 
     def set_status(self, s: str):
         self.status.setText(s)
+
+    # --- Hand command helpers ---
+    def send_angle_to_hand(self):
+        """Run the handSerial.py script with the specified channel/angle (and optional port)."""
+        if self.hand_proc.state() != QProcess.NotRunning:
+            QMessageBox.information(self, "Already running", "Hand command is already running.")
+            return
+
+        python = self.py_edit.text().strip()
+        hand_script = Path(REPO_ROOT) / "handSerial.py"
+        if not hand_script.exists():
+            QMessageBox.warning(self, "Script not found", f"Cannot find:\n{hand_script}")
+            return
+
+        ch = str(self.hand_channel.value())
+        ang = str(self.hand_angle.value())
+        args = [str(hand_script), "--channel", ch, "--angle", ang]
+        port = self.hand_port.text().strip()
+        if port:
+            args += ["--port", port]
+
+        # ensure working dir so relative modules resolve
+        self.hand_proc.setWorkingDirectory(str(REPO_ROOT))
+        self.append_log(f"$ {python} {' '.join(args)}\n")
+        self.hand_proc.start(python, args)
+        if not self.hand_proc.waitForStarted(3000):
+            self.append_log("ERROR: Failed to start hand command.\n")
+            return
+
+    def on_hand_stdout(self):
+        data = bytes(self.hand_proc.readAllStandardOutput()).decode(errors="ignore")
+        if data:
+            self.append_log(data)
+        data_err = bytes(self.hand_proc.readAllStandardError()).decode(errors="ignore")
+        if data_err:
+            self.append_log(data_err)
+
+    def on_hand_finished(self):
+        self.append_log("\n[hand command exited]\n")
 
 def main():
     app = QApplication(sys.argv)
