@@ -22,9 +22,10 @@ handSolution = mp.solutions.hands
 hands = handSolution.Hands(static_image_mode=False, max_num_hands=2,
                            min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-# smoothing state
-smoothed_angle = None
-SMOOTH_ALPHA = 0.2  # EMA smoothing factor, 0..1 (lower = smoother)
+# smoothing state (circular: keep cos/sin components)
+smoothed_x = None
+smoothed_y = None
+SMOOTH_ALPHA = 0.2  # EMA smoothing factor applied to unit-vector components
 
 # --- Settings for sending to the hand program ---
 SEND_TO_HAND = True                     # toggle sending from tracker
@@ -85,35 +86,65 @@ while True:
             ix, iy = int(idx.x * w_img), int(idx.y * h_img)
             px, py = int(pinky.x * w_img), int(pinky.y * h_img)
 
-            # Compute a rotation-like angle using wrist -> middle_mcp vector
-            dx = mx - wx
-            dy = my - wy
-            angle_rad = math.atan2(dy, dx)
-            angle_deg = math.degrees(angle_rad)  # -180..180
+            # Compute two candidate angles:
+            #  - a1: wrist -> middle_mcp (gives direction of fingers relative to wrist)
+            #  - a2: index_mcp -> pinky_mcp (gives palm orientation across the hand)
+            dx1 = mx - wx
+            dy1 = my - wy
+            a1 = math.atan2(dy1, dx1)
 
-            # Optional: use index->pinky vector for better roll estimate on some poses
-            # alt_dx = px - ix
-            # alt_dy = py - iy
-            # alt_angle_deg = math.degrees(math.atan2(alt_dy, alt_dx))
+            dx2 = px - ix
+            dy2 = py - iy
+            a2 = math.atan2(dy2, dx2)
+
+            # Palm width as a simple reliability measure (pixels)
+            palm_width = math.hypot(dx2, dy2)
+
+            # Normalize palm width to 0..1 based on empirical min/max (as fraction of image width)
+            pw_frac = palm_width / max(1.0, w_img)
+            PW_MIN = 0.04   # when palm is very narrow (closed), prefer a1
+            PW_MAX = 0.20   # when palm is wide (open hand), prefer a2
+            t = (pw_frac - PW_MIN) / (PW_MAX - PW_MIN)
+            t = max(0.0, min(1.0, t))
+
+            # combine angles as weighted average of unit vectors (avoids wrap issues)
+            cx = (1.0 - t) * math.cos(a1) + t * math.cos(a2)
+            cy = (1.0 - t) * math.sin(a1) + t * math.sin(a2)
+            # if both vectors cancel out (very small magnitude), fall back to a1
+            mag = math.hypot(cx, cy)
+            if mag < 1e-3:
+                cx, cy = math.cos(a1), math.sin(a1)
+
+            # Normalize
+            cx /= math.hypot(cx, cy)
+            cy /= math.hypot(cx, cy)
 
             # Normalize sign for handedness to keep consistent direction (optional)
             if i < len(handedness) and handedness[i].lower().startswith('l'):
-                angle_deg = -angle_deg
+                cx, cy = -cx, -cy
 
-            # Smooth angle (circular-safe smoothing isn't implemented here; this works for small changes)
-            if smoothed_angle is None:
-                smoothed_angle = angle_deg
+            # Circular smoothing: EMA on unit-vector components
+            if smoothed_x is None:
+                smoothed_x = cx
+                smoothed_y = cy
             else:
-                smoothed_angle = SMOOTH_ALPHA * angle_deg + (1 - SMOOTH_ALPHA) * smoothed_angle
+                smoothed_x = SMOOTH_ALPHA * cx + (1 - SMOOTH_ALPHA) * smoothed_x
+                smoothed_y = SMOOTH_ALPHA * cy + (1 - SMOOTH_ALPHA) * smoothed_y
+
+            # derive angle in degrees from smoothed vector
+            smoothed_angle = math.degrees(math.atan2(smoothed_y, smoothed_x))
+            angle_deg = math.degrees(math.atan2(cy, cx))
 
             # Draw reference points and line
             cv2.circle(img, (wx, wy), 6, (0, 255, 255), cv2.FILLED)
             cv2.circle(img, (mx, my), 6, (255, 0, 255), cv2.FILLED)
             cv2.line(img, (wx, wy), (mx, my), (200, 200, 0), 2)
 
-            # Display angles
-            cv2.putText(img, f'Raw:{int(angle_deg)}d', (wx + 10, wy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,0), 2)
-            cv2.putText(img, f'Sm:{int(smoothed_angle)}d', (wx + 10, wy + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+            # Display angles and palm width
+            cv2.putText(img, f'A1:{int(math.degrees(a1))}d', (wx + 10, wy - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,0), 2)
+            cv2.putText(img, f'A2:{int(math.degrees(a2))}d', (wx + 10, wy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,200,0), 2)
+            cv2.putText(img, f'Sm:{int(smoothed_angle)}d', (wx + 10, wy + 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+            cv2.putText(img, f'PW:{pw_frac:.2f}', (wx + 10, wy + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200,200,200), 1)
 
             # Print the smoothed angle to stdout (one line per detected hand)
             # Format: ANGLE <hand_index> <degrees>
