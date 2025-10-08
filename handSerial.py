@@ -54,6 +54,7 @@ def main(argv=None):
     p.add_argument("--channel", type=int, help="Channel 0..15 to target")
     p.add_argument("--angle", type=float, help="Angle to send (0..SERVO_MAX_DEG)")
     p.add_argument("--speed", type=float, help="Speed in deg/sec")
+    p.add_argument("--serve", action="store_true", help="Run as a persistent stdin->serial server")
     args = p.parse_args(argv)
 
     # Resolve default port if not provided
@@ -66,6 +67,38 @@ def main(argv=None):
             port = "/dev/cu.usbmodem2101"
         else:
             port = "/dev/ttyACM0"
+
+    # Serve mode: open serial and read stdin lines forever
+    if args.serve:
+        ser = open_serial(port, args.baud)
+        if not ser:
+            return 2
+        print(f"Serving on {port} @{args.baud}")
+        try:
+            for raw in sys.stdin:
+                line = raw.strip()
+                if not line:
+                    continue
+                # If line is a single integer/float, interpret as angle for the configured channel
+                parts = line.split()
+                try:
+                    if len(parts) == 1:
+                        # single value => angle
+                        ang = int(float(parts[0]))
+                        send_line(ser, f"{args.channel if args.channel is not None else 0} {ang}")
+                    elif len(parts) == 2:
+                        # two tokens: either 'ch angle' or a command like 'a 120'
+                        send_line(ser, line)
+                    else:
+                        # forward raw
+                        send_line(ser, line)
+                except Exception as e:
+                    print(f"ERROR handling line '{line}': {e}", file=sys.stderr)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            ser.close()
+        return 0
 
     # If no actionable args, run the demo
     if args.channel is None and args.angle is None and args.speed is None:
